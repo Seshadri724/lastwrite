@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lastwrite"
+version = "0.3.0"
+description = "The evidence engine that lets humans and AI agents explain what a Windows process did."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "lastwrite contributors" }]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["windows", "etw", "procmon", "forensics", "sysadmin", "file-io", "dfir", "incident-response"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: System Administrators",
+  "Intended Audience :: Information Technology",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: System :: Monitoring",
+  "Topic :: System :: Systems Administration",
+  "Topic :: Security",
+]
+dependencies = [
+  "rich>=13.0",
+]
+
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "pytest-cov>=4.0",
+  "build>=1.0",
+  "ruff>=0.1",
+]
+exe = [
+  "pyinstaller>=6.0",
+]
+
+[project.scripts]
+lastwrite = "lastwrite.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["lastwrite*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E501"]

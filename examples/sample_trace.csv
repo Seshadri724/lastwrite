@@ -1,0 +1,10 @@
+Microsoft Tracerpt 10.0.19041 -- preamble line ignored
+Event Name,Type,Event ID,Version,Channel,Level,Opcode,Task,Keyword,PID,TID,Processor Number,Instance ID,Parent Instance ID,Activity ID,Related Activity ID,Clock-Time,Kernel(ms),User(ms),IrpPtr,FileObject,FileKey,FileName,IoSize
+FileIo/Create,Info,0,0,0,0,0,0,0,8842,1,0,0,0,0,0,8/14/2024-15:31:42.000000,0,0,0,0xAAA,0xAAA,C:\Users\me\Documents\a.txt,0
+FileIo/Write,Info,0,0,0,0,0,0,0,8842,1,0,0,0,0,0,8/14/2024-15:31:42.100000,0,0,0,0xAAA,0xAAA,,4096
+FileIo/Write,Info,0,0,0,0,0,0,0,8842,1,0,0,0,0,0,8/14/2024-15:31:42.200000,0,0,0,0xAAA,0xAAA,,2048
+FileIo/Create,Info,0,0,0,0,0,0,0,8842,1,0,0,0,0,0,8/14/2024-15:31:42.230000,0,0,0,0xCCC,0xCCC,C:\Users\me\AppData\Local\Temp\notepad-backup.tmp,0
+FileIo/Write,Info,0,0,0,0,0,0,0,8842,1,0,0,0,0,0,8/14/2024-15:31:42.250000,0,0,0,0xCCC,0xCCC,,1234567
+FileIo/Write,Info,0,0,0,0,0,0,0,8842,1,0,0,0,0,0,8/14/2024-15:31:42.260000,0,0,0,0xCCC,0xCCC,,40000
+FileIo/Write,Info,0,0,0,0,0,0,0,4001,1,0,0,0,0,0,8/14/2024-15:31:43.000000,0,0,0,0xBBB,0xBBB,C:\Windows\System32\foo.log,512
+FileIo/Write,Info,0,0,0,0,0,0,0,4001,1,0,0,0,0,0,8/14/2024-15:31:43.100000,0,0,0,0xBBB,0xBBB,C:\Windows\System32\foo.log,2048

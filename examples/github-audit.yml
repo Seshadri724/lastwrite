@@ -1,0 +1,29 @@
+# Copy into .github/workflows/installer-audit.yml after you generate clean.csv + install.csv
+# on a windows-latest runner (admin capture). lastwrite audit itself needs no admin on CSV.
+
+name: installer-audit
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install lastwrite
+      - name: Audit installer writes
+        run: >
+          lastwrite audit
+          --before clean.csv
+          --after install.csv
+          --policy examples/installer.policy.json
+          --sarif lastwrite.sarif
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: lastwrite.sarif

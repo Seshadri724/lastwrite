@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+
+# Environments
+.venv/
+.venv_test/
+env/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Captured traces & generated reports (never commit these)
+*.etl
+trace.csv
+*.html
+report.html
+
+# Keep the sample fixture used by the test suite.
+!examples/sample_trace.csv
+
+docs/

@@ -1,0 +1,12 @@
+Event Name,Type,Event ID,Version,Channel,Level,Opcode,Task,Keyword,PID,TID,Processor Number,Instance ID,Parent Instance ID,Activity ID,Related Activity ID,Clock-Time,Kernel(ms),User(ms),IrpPtr,FileObject,FileKey,FileName,IoSize
+FileIo/Write,Info,0,0,0,0,0,0,0,500,1,0,0,0,0,0,8/14/2024-15:31:40.000000,0,0,0,0x1,0x1,C:\Users\me\AppData\Local\app\log.txt,100
+FileIo/Create,Info,0,0,0,0,0,0,0,7000,1,0,0,0,0,0,8/14/2024-15:31:41.000000,0,0,0,0x2,0x2,C:\Program Files\Acme\acme.exe,0
+FileIo/Write,Info,0,0,0,0,0,0,0,7000,1,0,0,0,0,0,8/14/2024-15:31:41.100000,0,0,0,0x2,0x2,C:\Program Files\Acme\acme.exe,50000
+FileIo/Create,Info,0,0,0,0,0,0,0,7000,1,0,0,0,0,0,8/14/2024-15:31:41.200000,0,0,0,0x3,0x3,C:\Users\me\AppData\Local\Temp\update.exe,0
+FileIo/Write,Info,0,0,0,0,0,0,0,7000,1,0,0,0,0,0,8/14/2024-15:31:41.300000,0,0,0,0x3,0x3,C:\Users\me\AppData\Local\Temp\update.exe,9000
+FileIo/Create,Info,0,0,0,0,0,0,0,7000,1,0,0,0,0,0,8/14/2024-15:31:41.400000,0,0,0,0x4,0x4,C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\service.lnk,0
+FileIo/Write,Info,0,0,0,0,0,0,0,7000,1,0,0,0,0,0,8/14/2024-15:31:41.500000,0,0,0,0x4,0x4,C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\service.lnk,900
+FileIo/Write,Info,0,0,0,0,0,0,0,7000,1,0,0,0,0,0,8/14/2024-15:31:41.600000,0,0,0,0x5,0x5,C:\Program Files\Acme\data.txt:hidden,300
+FileIo/Write,Info,0,0,0,0,0,0,0,7000,1,0,0,0,0,0,8/14/2024-15:31:41.700000,0,0,0,0x6,0x6,C:\Windows\System32\acmesvc.dll,7000
+FileIo/Create,Info,0,0,0,0,0,0,0,7000,1,0,0,0,0,0,8/14/2024-15:31:41.800000,0,0,0,0x7,0x7,D:\Other\stuff.dat,0
+FileIo/Delete,Info,0,0,0,0,0,0,0,7000,1,0,0,0,0,0,8/14/2024-15:31:41.900000,0,0,0,0x8,0x8,C:\Users\me\AppData\Local\app\log.txt,0

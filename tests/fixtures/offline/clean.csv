@@ -1,0 +1,2 @@
+Event Name,Type,Event ID,Version,Channel,Level,Opcode,Task,Keyword,PID,TID,Processor Number,Instance ID,Parent Instance ID,Activity ID,Related Activity ID,Clock-Time,Kernel(ms),User(ms),IrpPtr,FileObject,FileKey,FileName,IoSize
+FileIo/Write,Info,0,0,0,0,0,0,0,500,1,0,0,0,0,0,8/14/2024-15:31:40.000000,0,0,0,0x1,0x1,C:\Users\me\AppData\Local\app\log.txt,100

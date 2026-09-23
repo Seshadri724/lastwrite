@@ -1,0 +1,10 @@
+include LICENSE
+include README.md
+include CHANGELOG.md
+include PRD.md
+recursive-include examples *.csv
+recursive-include tests *.py
+global-exclude *.pyc
+global-exclude __pycache__/*
+prune build
+prune dist

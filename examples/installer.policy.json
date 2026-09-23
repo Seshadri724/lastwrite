@@ -1,0 +1,13 @@
+{
+  "expected_roots": [
+    "C:\\Program Files\\Acme",
+    "C:\\Program Files (x86)\\Acme"
+  ],
+  "fail_on": [
+    "writes_to_startup",
+    "executable_written_to_temp",
+    "alternate_data_stream",
+    "office_pdf_spawning_exe",
+    "writes_outside_expected_roots"
+  ]
+}
