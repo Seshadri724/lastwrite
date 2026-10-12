@@ -33,3 +33,15 @@ def test_build_start_capture_cmd_includes_bincirc():
     assert "bincirc" in cmd
     assert "-max" in cmd
     assert "512" in cmd
+
+
+def test_default_keywords_are_real_kernel_flags():
+    # From `logman query providers "Windows Kernel Trace"`; an unknown name makes
+    # logman fail with 0x80020005 "Type mismatch" and no capture ever starts.
+    valid = {
+        "process", "thread", "img", "proccntr", "cswitch", "dpc", "isr", "syscall", "disk",
+        "file", "diskinit", "dispatcher", "pf", "hf", "virtalloc", "net", "registry", "alpc",
+        "splitio", "driver", "profile", "fileiocompletion", "fileio",
+    }
+    assert set(collector.DEFAULT_KEYWORDS.split(",")) <= valid
+    assert "fileio" in collector.DEFAULT_KEYWORDS.split(",")

@@ -1,7 +1,7 @@
 """Drive Windows ETW capture via the built-in logman.exe + tracerpt.exe.
 
-We use the kernel "NT Kernel Logger" session with the file_io and
-file_io_init keywords, which captures every file I/O operation on the
+We use the kernel "NT Kernel Logger" session with the fileio and file
+keywords (plus process/thread for PID attribution), which captures every file I/O operation on the
 machine. No driver install, no third-party binary — these tools ship in
 every modern Windows install.
 
@@ -9,7 +9,7 @@ Lifecycle:
     1. `logman stop "NT Kernel Logger" -ets`   (best-effort, in case a stale
        session is hanging around)
     2. `logman create trace "NT Kernel Logger" -p "Windows Kernel Trace"
-        (file_io,file_io_init) -o <etl> -ets`
+        (process,thread,fileio,file) -o <etl> -ets`
     3. sleep N seconds (or, in live mode, rotate buffers)
     4. `logman stop "NT Kernel Logger" -ets`
     5. `tracerpt <etl> -of CSV -o <csv> -y` (overwrite)
@@ -30,9 +30,10 @@ from pathlib import Path
 
 KERNEL_SESSION_NAME = "NT Kernel Logger"
 KERNEL_PROVIDER = "Windows Kernel Trace"
-# file_io: per-op file operations (Read/Write/Create/Delete/...)
-# file_io_init: gives us filenames at Create time so Writes can be correlated
-DEFAULT_KEYWORDS = "file_io,file_io_init"
+# Names must match `logman query providers "Windows Kernel Trace"` exactly, or logman
+# fails with 0x80020005 "Type mismatch". fileio: per-op Create/Read/Write/Delete/...;
+# file: FileObject -> name rundown; process/thread: map thread IDs back to PIDs.
+DEFAULT_KEYWORDS = "process,thread,fileio,file"
 
 
 class CollectorError(RuntimeError):

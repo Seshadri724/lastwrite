@@ -40,7 +40,13 @@ jobs:
 
       - name: Record clean baseline
         if: always()
-        run: lastwrite record -o out/clean.csv --duration 15s
+        timeout-minutes: 3
+        run: |
+          lastwrite record -o out/clean.csv --duration 15s
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # Show the real tracerpt layout in the log (header rows + first FileIo rows).
+          Get-Content out/clean.csv -TotalCount 25
+          Select-String -Path out/clean.csv -Pattern "FileIo" | Select-Object -First 25 | % Line
 
       - name: Record + audit GOOD installer (expect exit 0)
         if: always()
@@ -66,8 +72,10 @@ jobs:
 
       - name: Rolling agent start / status / query / stop
         if: always()
+        timeout-minutes: 3
         run: |
           lastwrite agent start
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           1..10 | % { Set-Content "$env:TEMP\lw-agent-$_.txt" "x" }
           Start-Sleep 5
           lastwrite agent status | Tee-Object out/agent-status.json
