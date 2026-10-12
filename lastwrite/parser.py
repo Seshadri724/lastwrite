@@ -1,28 +1,33 @@
 """Parse tracerpt CSV output into typed FileIoEvent records.
 
-tracerpt -of CSV emits a header line, a column-names line, then rows.
-Each row's columns vary by event type. We care about kernel FileIo events:
-  - FileIo/Write, FileIo/Read, FileIo/Create, FileIo/Delete, FileIo/Rename, FileIo/Close
+Real kernel traces (`tracerpt -of CSV`, verified on windows-latest) have one header row:
+  Event Name, Type, ..., PID, TID, ..., Clock-Time, Kernel(ms), User(ms), User Data
+Event Name and Type are separate cells ("FileIo", "Write"), Clock-Time is a FILETIME
+integer, and event fields follow positionally from the "User Data" column:
+  Create      IrpPtr, FileObject, TTID, CreateOptions, FileAttributes, ShareAccess, OpenPath
+  Read/Write  Offset, IrpPtr, FileObject, FileKey, TTID, IoSize, IoFlags, ExtraFlags
+  Delete/Rename/Cleanup/Close  IrpPtr, FileObject, FileKey, ...
+  FileCreate/FileRundown/FileDelete  FileKey, FileName  (name rundown, `file` keyword)
+Names arrive on Create (per FileObject) and FileCreate (per FileKey), often *after* the
+reads/writes they name, so kernel traces are resolved in two passes.
 
-Column layout for kernel FileIo events (tracerpt CSV):
-  Event Name, Type, Event ID, Version, Channel, Level, Opcode, Task, Keyword,
-  PID, TID, Processor Number, Instance ID, Parent Instance ID, Activity ID,
-  Related Activity ID, Clock-Time, Kernel(ms), User(ms), User Data...
+Rows `lastwrite-device,<device>,<drive>` before the header (written by
+collector.etl_to_csv on the capturing machine) map device paths to drive letters.
 
-The "User Data" tail holds event-specific fields. For FileIo/Write & Read it
-includes IrpPtr, FileObject, FileKey, ExtraInfo, IoSize, IoFlags. For
-FileIo/Create it includes IrpPtr, FileObject, FileName, ... .
-
-We do best-effort parsing: skip rows we can't classify; surface what we can.
+The older named-column layout (FileIo/Write rows with FileName/IoSize columns) used by
+the sample trace and unit tests is still read.
 """
 
 from __future__ import annotations
 
 import csv
+import functools
+import os
 import re
+import string
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Op codes we surface to the user.
@@ -120,47 +125,163 @@ def _to_int(s: str, base: int = 10) -> int:
         return 0
 
 
-def _normalize_path(raw: str) -> str:
-    """Translate kernel device paths to drive-letter paths when obvious."""
+@functools.cache
+def local_device_map() -> dict[str, str]:
+    r"""{'\Device\HarddiskVolume4': 'C:'} for this machine (empty off Windows)."""
+    if os.name != "nt":
+        return {}
+    import ctypes
+
+    out: dict[str, str] = {}
+    buf = ctypes.create_unicode_buffer(1024)
+    for letter in string.ascii_uppercase:
+        if ctypes.windll.kernel32.QueryDosDeviceW(f"{letter}:", buf, len(buf)):
+            out.setdefault(buf.value, f"{letter}:")
+    return out
+
+
+def _normalize_path(raw: str, devices: dict[str, str] | None = None) -> str:
+    r"""Translate \Device\HarddiskVolumeN\... to a drive-letter path when the volume is known."""
     raw = raw.strip().strip('"')
-    if not raw:
+    if not raw.startswith("\\Device\\"):
         return raw
-    # Common case: \Device\HarddiskVolumeN\Users\... — leave as-is; we can't
-    # reliably resolve volume mappings here without extra Win32 calls. The
-    # filename still reads naturally to a human ("HarddiskVolume3\Users\me\...").
-    return raw
+    parts = raw.split("\\", 3)  # ['', 'Device', 'HarddiskVolume4', 'rest...']
+    drive = (devices or {}).get("\\Device\\" + parts[2])
+    if not drive:
+        return raw
+    return drive + "\\" + (parts[3] if len(parts) > 3 else "")
 
 
 def parse_tracerpt_csv(path: str | Path) -> Iterator[FileIoEvent]:
-    """Yield FileIoEvent rows from a tracerpt-produced CSV file.
-
-    Tolerates the multi-line preamble tracerpt writes before the table.
-    Tolerates extra trailing columns and missing fields.
-    """
+    """Yield FileIoEvent rows from a tracerpt-produced CSV file."""
     p = Path(path)
     with p.open("r", encoding="utf-8", errors="replace", newline="") as f:
-        reader = csv.reader(f)
-        header_idx: dict[str, int] = {}
-        for row in reader:
-            if not row:
-                continue
-            first = row[0].strip()
-            # Locate the column header. tracerpt usually emits it as a row
-            # whose first cell is "Event Name".
-            if not header_idx:
-                if first.lower() == "event name":
-                    header_idx = {c.strip().lower(): i for i, c in enumerate(row)}
-                continue
-            event_name = first
-            op = _EVENT_OP_MAP.get(event_name)
-            if op is None:
-                continue
-            evt = _row_to_event(row, header_idx, op)
-            if evt is not None:
-                yield evt
+        rows = list(csv.reader(f))
+
+    header_idx: dict[str, int] = {}
+    devices: dict[str, str] = {}
+    root_pid: int | None = None
+    body: list[list[str]] = []
+    for i, row in enumerate(rows):
+        first = row[0].strip() if row else ""
+        if first == "lastwrite-device" and len(row) >= 3:
+            devices[row[1].strip()] = row[2].strip()
+        elif first == "lastwrite-root-pid" and len(row) >= 2:
+            root_pid = _to_int(row[1])
+        elif first.lower() == "event name":
+            header_idx = {c.strip().lower(): j for j, c in enumerate(row)}
+            body = rows[i + 1:]
+            break
     if not header_idx:
         # Garbage or empty input must not look like "a clean trace with no activity".
         raise ValueError(f"{p} is not a tracerpt CSV (no 'Event Name' header row)")
+
+    if "user data" in header_idx:
+        yield from _parse_kernel_rows(body, header_idx, devices or local_device_map(), root_pid)
+        return
+
+    for row in body:
+        if not row:
+            continue
+        op = _EVENT_OP_MAP.get(row[0].strip())
+        if op is None:
+            continue
+        evt = _row_to_event(row, header_idx, op)
+        if evt is not None:
+            yield evt
+
+
+_FILETIME_EPOCH = datetime(1601, 1, 1, tzinfo=timezone.utc)
+_FILE_OPEN = 1  # CreateDisposition (top byte of CreateOptions): open an existing file only
+_KERNEL_OPS = {"Create": OP_CREATE, "Read": OP_READ, "Write": OP_WRITE, "Delete": OP_DELETE,
+               "Rename": OP_RENAME, "Cleanup": OP_CLOSE, "Close": OP_CLOSE}
+_NAME_EVENTS = {"FileCreate", "FileRundown", "FileDelete"}
+
+
+def _process_tree(rows: list[list[str]], u, root_pid: int) -> set[int]:
+    """PIDs of root_pid and its descendants, plus any msiexec.exe in the trace.
+
+    Process Start/DCStart fields: UniqueProcessKey, ProcessId, ParentId, ..., ImageFileName (8).
+    ponytail: MSI installs write from the Windows Installer service (msiexec.exe, not a child
+    of setup.exe), so every msiexec in the window counts as the installer. A tracked process
+    tree via a per-capture service PID would be exact if unrelated MSI activity ever matters.
+    """
+    parents: dict[int, int] = {}
+    tree = {root_pid}
+    for r in rows:
+        if r[0].strip() == "Process" and r[1].strip() in ("Start", "DCStart"):
+            pid = _to_int(u(r, 1))
+            parents[pid] = _to_int(u(r, 2))
+            if u(r, 8).lower() == "msiexec.exe":
+                tree.add(pid)
+    grew = True
+    while grew:
+        before = len(tree)
+        tree |= {pid for pid, ppid in parents.items() if ppid in tree}
+        grew = len(tree) > before
+    return tree
+
+
+def _parse_kernel_rows(rows: list[list[str]], idx: dict[str, int],
+                       devices: dict[str, str], root_pid: int | None = None) -> Iterator[FileIoEvent]:
+    ud, pid_i, tid_i, ts_i = idx["user data"], idx.get("pid"), idx.get("tid"), idx.get("clock-time")
+
+    def u(row: list[str], k: int) -> str:
+        return row[ud + k].strip().strip('"') if ud + k < len(row) else ""
+
+    # `record -- <command>` stamps the command's PID: judge only what it (and its children) did,
+    # not the rest of the machine (Defender, event logs, indexers, the CI runner itself).
+    tree = _process_tree(rows, u, root_pid) if root_pid else None
+
+    file_rows = [r for r in rows if len(r) > ud and r[0].strip() == "FileIo"]
+    by_key: dict[str, str] = {}
+    by_obj: dict[str, str] = {}
+    create_key: dict[int, str] = {}  # Create row index -> FileKey of the handle it opened
+    pending: dict[str, int] = {}  # FileObject -> its latest Create (FileObject addresses get reused)
+    for i, r in enumerate(file_rows):
+        kind = r[1].strip()
+        if kind in _NAME_EVENTS:
+            by_key.setdefault(u(r, 0), u(r, 1))
+        elif kind == "Create":
+            by_obj[u(r, 1)] = u(r, 6)
+            pending[u(r, 1)] = i
+        elif kind in ("Read", "Write") and u(r, 2) in pending:
+            create_key[pending.pop(u(r, 2))] = u(r, 3)
+        elif kind in ("Cleanup", "Close", "Delete", "Rename") and u(r, 1) in pending:
+            create_key[pending.pop(u(r, 1))] = u(r, 2)
+
+    for i, r in enumerate(file_rows):
+        op = _KERNEL_OPS.get(r[1].strip())
+        if op is None:
+            continue
+        pid = _to_int(r[pid_i]) if pid_i is not None else 0
+        if tree is not None and pid not in tree:
+            continue
+        size, path = 0, ""
+        if op == OP_CREATE:
+            # The kernel logs a Create for every open; only count ones that can create/overwrite.
+            if _to_int(u(r, 3)) >> 24 == _FILE_OPEN:
+                continue
+            # Prefer the FileKey rundown name: Create's OpenPath can be an 8.3 alias (RUNNER~1).
+            fo, fk = u(r, 1), create_key.get(i, "")
+            path = by_key.get(fk) or u(r, 6)
+        elif op in (OP_READ, OP_WRITE):
+            fo, fk, size = u(r, 2), u(r, 3), _to_int(u(r, 5))
+        else:
+            fo, fk = u(r, 1), u(r, 2)
+        path = path or by_key.get(fk) or by_obj.get(fo, "")
+        ticks = _to_int(r[ts_i]) if ts_i is not None and ts_i < len(r) else 0
+        if not ticks:
+            continue
+        yield FileIoEvent(
+            op=op,
+            pid=pid,
+            tid=_to_int(r[tid_i]) if tid_i is not None else 0,
+            file_path=_normalize_path(path, devices),
+            file_object=fo,
+            size=size,
+            timestamp=_FILETIME_EPOCH + timedelta(microseconds=ticks // 10),
+        )
 
 
 def _row_to_event(row: list[str], idx: dict[str, int], op: str) -> FileIoEvent | None:

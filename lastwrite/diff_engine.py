@@ -67,6 +67,8 @@ def compute_diff(
 
         if e.op in (OP_DELETE, OP_RENAME):
             deleted_paths.add(p)
+        elif e.op not in MUTATING_OPS:
+            continue  # a file that was only read or closed is neither new nor touched
         elif p not in before_paths:
             new_paths.add(p)
         else:

@@ -118,14 +118,25 @@ def test_record_spans_command_and_writes_trace(tmp_path, monkeypatch):
     monkeypatch.setattr(collector, "kernel_session_exists", lambda: False)
     monkeypatch.setattr(collector, "start_kernel_capture", lambda etl: calls.append("start"))
     monkeypatch.setattr(collector, "stop_kernel_capture", lambda: calls.append("stop"))
-    monkeypatch.setattr(collector, "etl_to_csv", lambda etl, out: (calls.append("csv"), out.write_text("x")))
-    monkeypatch.setattr(cli.subprocess, "run", lambda cmd: (calls.append(cmd), type("R", (), {"returncode": 3})())[1])
+    monkeypatch.setattr(collector, "etl_to_csv",
+                        lambda etl, out, root_pid=None: (calls.append(("csv", root_pid)), out.write_text("x")))
+
+    class FakeProc:
+        pid = 4242
+
+        def __init__(self, cmd):
+            calls.append(cmd)
+
+        def wait(self):
+            return 3
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProc)
     monkeypatch.setattr(cli.time, "sleep", lambda s: calls.append(f"sleep{s}"))
 
     out = tmp_path / "install.csv"
     rc = main(["record", "-o", str(out), "--no-admin-check", "--settle", "2s", "--", "setup.exe", "/quiet"])
     assert rc == 3  # installer's exit code propagates
-    assert calls == ["start", ["setup.exe", "/quiet"], "sleep2", "stop", "csv"]
+    assert calls == ["start", ["setup.exe", "/quiet"], "sleep2", "stop", ("csv", 4242)]
     assert out.exists()
 
 

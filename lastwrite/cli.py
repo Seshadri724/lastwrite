@@ -274,13 +274,16 @@ def handle_record_command(args) -> int:
 
     out = Path(args.output)
     rc = 0
+    root_pid = None
     with collector.temp_workdir() as wd:
         etl = wd / "trace.etl"
         collector.start_kernel_capture(etl)
         try:
             if cmd:
                 sys.stderr.write(f"lastwrite: recording while running: {' '.join(cmd)}\n")
-                rc = subprocess.run(cmd).returncode
+                proc = subprocess.Popen(cmd)
+                root_pid = proc.pid  # audit/diff judge only this process tree
+                rc = proc.wait()
             sys.stderr.write(f"lastwrite: capturing {wait}s more...\n")
             time.sleep(wait)
         finally:
@@ -288,7 +291,7 @@ def handle_record_command(args) -> int:
         if out.suffix.lower() == ".etl":
             shutil.copyfile(etl, out)
         else:
-            collector.etl_to_csv(etl, out)
+            collector.etl_to_csv(etl, out, root_pid=root_pid)
     print(f"Saved trace to {out}")
     if rc:
         sys.stderr.write(f"lastwrite: command exited with {rc}\n")

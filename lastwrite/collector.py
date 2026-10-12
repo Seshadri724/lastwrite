@@ -28,6 +28,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from .parser import local_device_map
+
 KERNEL_SESSION_NAME = "NT Kernel Logger"
 KERNEL_PROVIDER = "Windows Kernel Trace"
 # Names must match `logman query providers "Windows Kernel Trace"` exactly, or logman
@@ -152,8 +154,19 @@ def stop_kernel_capture() -> None:
     _run([_logman(), "stop", KERNEL_SESSION_NAME, "-ets"], timeout=30)
 
 
-def etl_to_csv(etl_path: Path, csv_path: Path) -> None:
-    """Convert an .etl file to CSV using tracerpt."""
+def etl_to_csv(etl_path: Path, csv_path: Path, root_pid: int | None = None) -> None:
+    """Convert an .etl file to CSV using tracerpt, then stamp it with this machine's
+    device->drive map (and the recorded command's PID) so it parses correctly anywhere."""
+    _tracerpt_csv(etl_path, csv_path)
+    rows = [f"lastwrite-device,{dev},{drive}" for dev, drive in local_device_map().items()]
+    if root_pid is not None:
+        rows.append(f"lastwrite-root-pid,{root_pid}")
+    if rows:
+        body = csv_path.read_text(encoding="utf-8", errors="replace")
+        csv_path.write_text("\n".join(rows) + "\n" + body, encoding="utf-8")
+
+
+def _tracerpt_csv(etl_path: Path, csv_path: Path) -> None:
     if csv_path.exists():
         csv_path.unlink()
     cmd = [

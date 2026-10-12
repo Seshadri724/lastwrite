@@ -33,6 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The documented audit workflow could not work: it produced grouped-summary CSVs instead
   of traces, and captured only after the installer had finished.
 
+### Fixed (from the first real captures on windows-latest)
+- Live capture never started: the kernel keywords `file_io,file_io_init` do not exist, so
+  `logman` failed with 0x80020005 "Type mismatch". Now `process,thread,fileio,file`.
+- The parser only understood a hand-written CSV layout. It now reads real tracerpt output
+  (separate Event Name/Type cells, FILETIME clock, positional User Data, names resolved from
+  FileCreate rundown) and maps `\Device\HarddiskVolumeN` to drive letters using a device map
+  stamped into the CSV on the capturing machine.
+- Opening an existing file is no longer reported as a create; 8.3 aliases (RUNNER~1) resolve to
+  long names; reused FileObject addresses no longer mislabel files.
+- `record -- <command>` scopes the trace to that command's process tree (plus msiexec), so
+  background activity (Defender, event logs, the CI runner) no longer fails clean installers.
+- `diff`/`audit` count only written files as new/touched, not files that were merely read.
+
 ### Fixed (from [offline test findings](docs/OFFLINE-TEST-FINDINGS.md))
 - `audit`/`diff`: rules now judge only activity absent from the `--before` baseline, so
   background noise no longer fails clean installers.
