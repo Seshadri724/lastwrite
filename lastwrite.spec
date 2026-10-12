@@ -8,9 +8,12 @@
 # Administrator privileges at runtime to start the ETW kernel session.
 #
 # UNSIGNED: this build is not code-signed. Windows SmartScreen will show a
-# "Windows protected your PC" warning on first run. Sign it (signtool, with a
-# code-signing cert) before handing dist/lastwrite.exe to anyone outside the
-# dev team, or distribute via `pip install lastwrite` instead.
+# "Windows protected your PC" warning on first run. Before public release:
+#   1. Sign with Azure Trusted Signing or signtool + EV cert:
+#        signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\lastwrite.exe
+#   2. Publish dist\lastwrite.exe.sha256 alongside the exe.
+# Until then, distribute via `pip install lastwrite` or hand the exe only to
+# beta testers with the checksum.
 
 # -*- mode: python ; coding: utf-8 -*-
 
@@ -45,10 +48,16 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # upx=False on purpose: UPX packing triggers antivirus false positives,
+    # which is fatal for a security tool's reputation.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
+    # Request elevation at launch: ETW kernel capture requires admin.
+    # Keeps behavior identical to `lastwrite` from an elevated terminal,
+    # instead of failing deep inside logman with access-denied.
+    uac_admin=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

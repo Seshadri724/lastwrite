@@ -1,5 +1,6 @@
-# Copy into .github/workflows/installer-audit.yml after you generate clean.csv + install.csv
-# on a windows-latest runner (admin capture). lastwrite audit itself needs no admin on CSV.
+# Copy into .github/workflows/installer-audit.yml.
+# Runs on a windows-latest runner (elevated, disposable). `record` needs admin
+# for ETW capture; `audit` itself needs no admin on CSV traces.
 
 name: installer-audit
 
@@ -10,12 +11,20 @@ on:
 jobs:
   audit:
     runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install lastwrite
+      - run: pip install lastwrite==0.3.0
+      - name: Record clean baseline (keep machine idle)
+        run: lastwrite record -o clean.csv --duration 15s
+      - name: Record installer run
+        run: lastwrite record -o install.csv --settle 10s -- .\setup.exe /quiet
       - name: Audit installer writes
         run: >
           lastwrite audit
@@ -23,7 +32,7 @@ jobs:
           --after install.csv
           --policy examples/installer.policy.json
           --sarif lastwrite.sarif
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: lastwrite.sarif

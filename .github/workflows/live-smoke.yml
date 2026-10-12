@@ -1,0 +1,89 @@
+# Real ETW capture on a disposable windows-latest runner (admin, thrown away after the job).
+# Nothing here touches a developer machine. Every step runs even if an earlier one fails,
+# so one run shows the full picture; outputs are uploaded as the "live-smoke" artifact.
+
+name: live-smoke
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - run: mkdir out
+
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Snapshot capture sees file writes
+        if: always()
+        run: |
+          $job = Start-Job { 1..40 | % { Set-Content "$env:TEMP\lw-noise-$_.txt" "x$_"; Start-Sleep -Milliseconds 200 } }
+          lastwrite --duration 10s --op all --format json -o out/snapshot.json
+          Receive-Job $job -Wait | Out-Null
+          python -c "import json,sys; m=json.load(open('out/snapshot.json'))['meta']; print(m); sys.exit(0 if m['matched_events'] > 0 else 1)"
+
+      - name: Explain (live)
+        if: always()
+        run: lastwrite explain --duration 5s | Tee-Object out/explain.txt
+
+      - name: Record clean baseline
+        if: always()
+        run: lastwrite record -o out/clean.csv --duration 15s
+
+      - name: Record + audit GOOD installer (expect exit 0)
+        if: always()
+        run: |
+          lastwrite record -o out/good.csv -- python .github/ci/fake_installer.py good
+          lastwrite audit --before out/clean.csv --after out/good.csv --expected-roots "C:\Program Files\LwAcme" --format json -o out/good-audit.json
+          $rc = $LASTEXITCODE
+          python -c "import json; d=json.load(open('out/good-audit.json')); print('passed:', d['passed']); [print(v['rule'], v['evidence'][:10]) for v in d['violations']]"
+          if ($rc -ne 0) { Write-Error "good installer audit exit $rc (expected 0)"; exit 1 }
+
+      - name: Record + audit BAD installer (expect exit 1 with startup + temp exe)
+        if: always()
+        run: |
+          lastwrite record -o out/bad.csv -- python .github/ci/fake_installer.py bad
+          lastwrite audit --before out/clean.csv --after out/bad.csv --expected-roots "C:\Program Files\LwAcme" --sarif out/bad.sarif | Tee-Object out/bad-audit.txt
+          $rc = $LASTEXITCODE
+          $txt = Get-Content out/bad-audit.txt -Raw
+          if ($rc -ne 1) { Write-Error "bad installer audit exit $rc (expected 1)"; exit 1 }
+          foreach ($r in 'writes_to_startup', 'executable_written_to_temp') {
+            if ($txt -notmatch $r) { Write-Error "missing $r"; exit 1 }
+          }
+          exit 0
+
+      - name: Rolling agent start / status / query / stop
+        if: always()
+        run: |
+          lastwrite agent start
+          1..10 | % { Set-Content "$env:TEMP\lw-agent-$_.txt" "x" }
+          Start-Sleep 5
+          lastwrite agent status | Tee-Object out/agent-status.json
+          lastwrite query --since 5m --format json -o out/query.json
+          $q = $LASTEXITCODE
+          lastwrite agent stop
+          if ($q -ne 0) { exit $q }
+
+      - name: No kernel session left behind
+        if: always()
+        run: |
+          logman query -ets | Tee-Object out/sessions-after.txt
+          if (Select-String -Path out/sessions-after.txt -Pattern "NT Kernel Logger" -Quiet) { Write-Error "NT Kernel Logger still running"; exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-smoke
+          path: out/

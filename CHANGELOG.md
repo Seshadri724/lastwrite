@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deterministic suspicious-write rules engine (temp executables, startup-folder touches,
   system directory writes, ADS writes, writes outside expected install roots).
 
+### Added
+- `lastwrite record -o trace.csv [--duration 15s] [-- installer args]`: saves a raw trace
+  for `audit`/`diff`, capturing across the whole installer run.
+- `.github/workflows/live-smoke.yml`: real ETW capture, record, audit (good + bad fake
+  installer) and agent checks on a disposable `windows-latest` runner.
+
+### Fixed
+- The documented audit workflow could not work: it produced grouped-summary CSVs instead
+  of traces, and captured only after the installer had finished.
+
 ### Fixed (from [offline test findings](docs/OFFLINE-TEST-FINDINGS.md))
 - `audit`/`diff`: rules now judge only activity absent from the `--before` baseline, so
   background noise no longer fails clean installers.
@@ -38,10 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known gaps before release
 - Executable is not code-signed (see `lastwrite.spec`); Windows SmartScreen will warn on
-  first run of the built `.exe`.
+  first run of the built `.exe`. Sign via Azure Trusted Signing / `signtool` and publish
+  the `.sha256` from `scripts\build_exe.ps1` before public release. `dist/lastwrite.exe`
+  currently in the working tree predates the hardened spec (`uac_admin`, `upx=False`) —
+  rebuild it with `scripts\build_exe.ps1` before shipping.
 - ETW kernel-capture code paths (`collector.py`, `agent.py`) are covered by tests that
   mock the underlying `logman`/kernel-session calls; no automated test exercises real
-  Windows kernel tracing — verify manually on a real machine before tagging a release.
+  Windows kernel tracing — `.github/workflows/live-smoke.yml` must be green on
+  `windows-latest` (good installer exit 0, bad installer exit 1, no leaked session)
+  before tagging a release.
 
 ## [0.1.0] - 2026-06-23
 

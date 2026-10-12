@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
+import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -54,6 +57,19 @@ def _build_parser() -> argparse.ArgumentParser:
     audit_p.add_argument("--sarif", help="Write SARIF 2.1 for GitHub code scanning")
     audit_p.add_argument("--format", choices=("table", "json"), default="table")
     audit_p.add_argument("--output", "-o", default=None, help="Write table/JSON to a file instead of stdout")
+
+    rec_p = subparsers.add_parser(
+        "record",
+        help="Save a raw trace for audit/diff, optionally while running a command (e.g. an installer).",
+        description="Examples:  lastwrite record -o clean.csv --duration 15s\n"
+                    "           lastwrite record -o install.csv -- .\\setup.exe /quiet",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    rec_p.add_argument("-o", "--output", required=True, help="Trace file to write (.csv tracerpt, or .etl)")
+    rec_p.add_argument("--duration", default="15s", help="Capture length when no command is given")
+    rec_p.add_argument("--settle", default="5s", help="Keep capturing this long after the command exits")
+    rec_p.add_argument("--no-admin-check", action="store_true", help="Skip admin check elevation.")
+    rec_p.add_argument("command", nargs=argparse.REMAINDER, help="Command to run during capture, after --")
 
     # explain subcommand
     exp_p = subparsers.add_parser("explain", help="Produce plain-English process behavior triage with evidence links.")
@@ -244,6 +260,41 @@ def handle_audit_command(args) -> int:
     return 0 if result.passed else 1
 
 
+def handle_record_command(args) -> int:
+    """Capture to a file audit/diff can read. With a command, the capture spans its whole run."""
+    if not collector.is_windows():
+        raise RuntimeError("record requires Windows")
+    cmd = args.command[1:] if args.command[:1] == ["--"] else args.command
+    wait = parse_duration(args.settle if cmd else args.duration)  # validate before tracing
+    admin.require_admin(skip=args.no_admin_check)
+    if collector.kernel_session_exists():
+        raise collector.CollectorError(
+            f'ETW session "{collector.KERNEL_SESSION_NAME}" is already running; stop it first'
+        )
+
+    out = Path(args.output)
+    rc = 0
+    with collector.temp_workdir() as wd:
+        etl = wd / "trace.etl"
+        collector.start_kernel_capture(etl)
+        try:
+            if cmd:
+                sys.stderr.write(f"lastwrite: recording while running: {' '.join(cmd)}\n")
+                rc = subprocess.run(cmd).returncode
+            sys.stderr.write(f"lastwrite: capturing {wait}s more...\n")
+            time.sleep(wait)
+        finally:
+            collector.stop_kernel_capture()
+        if out.suffix.lower() == ".etl":
+            shutil.copyfile(etl, out)
+        else:
+            collector.etl_to_csv(etl, out)
+    print(f"Saved trace to {out}")
+    if rc:
+        sys.stderr.write(f"lastwrite: command exited with {rc}\n")
+    return rc
+
+
 def handle_explain_command(args) -> int:
     events = []
     lost_events = 0
@@ -331,6 +382,8 @@ def _run(args) -> int:
         return handle_diff_command(args)
     elif args.subcommand == "audit":
         return handle_audit_command(args)
+    elif args.subcommand == "record":
+        return handle_record_command(args)
     elif args.subcommand == "explain":
         return handle_explain_command(args)
     elif args.subcommand == "agent":

@@ -122,29 +122,24 @@ the primary feature for beta validation.
 From an elevated PowerShell:
 
 ```powershell
-lastwrite --duration 10s --op all --format csv -o clean.csv
+lastwrite record -o clean.csv --duration 15s
 ```
 
-Keep the machine idle during this capture.
+Keep the machine idle during this capture. `record` saves the raw trace that `audit`
+reads. Do not use `lastwrite ... --format csv` here: that writes a grouped summary, not a
+trace, and `audit` rejects it.
 
-### 2. Run the installer
+### 2 + 3. Record while the installer runs
 
-Run the installer using its documented silent or unattended command. Example:
+Pass the installer's silent command after `--`. The capture starts before the installer,
+covers its whole run, and keeps going for `--settle` (default 5s) afterwards:
 
 ```powershell
-.\setup.exe /quiet
+lastwrite record -o install.csv --settle 10s -- .\setup.exe /quiet
 ```
 
-Use the actual arguments required by your installer.
-
-### 3. Capture the after-install trace
-
-```powershell
-lastwrite --duration 30s --op all --format csv -o install.csv
-```
-
-Give the installed application enough time to finish post-install work before
-capturing.
+Use the actual arguments required by your installer. `record` exits with the
+installer's exit code.
 
 ### 4. Create or adjust the policy
 
@@ -238,10 +233,16 @@ New-Item -ItemType Directory -Force .github\workflows | Out-Null
 Copy-Item examples\github-audit.yml .github\workflows\installer-audit.yml
 ```
 
-The example assumes that `clean.csv` and `install.csv` already exist on the
-runner. The repository does not yet automate elevated trace generation around an
-installer. You must add that capture step separately and confirm that the runner
-permits the required ETW operation.
+GitHub-hosted `windows-latest` runners are elevated, so you can create the traces in the
+same job before the audit step:
+
+```yaml
+- run: lastwrite record -o clean.csv --duration 15s
+- run: lastwrite record -o install.csv -- .\setup.exe /quiet
+```
+
+`.github/workflows/live-smoke.yml` in this repository does exactly this with a fake
+installer and is the reference for a working setup.
 
 The audit step should look like:
 

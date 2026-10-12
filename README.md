@@ -4,6 +4,11 @@
 
 `lastwrite` turns raw Windows ETW file I/O streams into verifiable, structured evidence and clear explanations. Built for developers, security engineers, IT admins, and AI agents.
 
+> **Beta (v0.3.0):** test first in Windows Sandbox or a disposable VM, not on
+> production systems. The standalone `.exe` is **unsigned** — expect a
+> SmartScreen warning and verify the published SHA-256 checksum. See
+> [BETA-MANUAL.md](BETA-MANUAL.md).
+
 ---
 
 ## Key Capabilities
@@ -12,6 +17,8 @@
 Fail a build when an installer writes outside allowed roots, drops an exe in Temp, or touches Startup:
 
 ```powershell
+lastwrite record -o clean.csv --duration 15s                 # idle baseline
+lastwrite record -o install.csv -- .\setup.exe /quiet        # capture spans the install
 lastwrite audit --before clean.csv --after install.csv --policy examples/installer.policy.json --sarif lastwrite.sarif
 ```
 
@@ -73,14 +80,21 @@ Evidence: 196 total operations across C:\Users\...\AppData\Local\Google\Chrome.
 
 ## Quickstart
 
-### Standard Process Snapshot
+### Zero-risk offline check (no admin needed)
 ```powershell
-lastwrite --process notepad.exe --duration 5m
+pip install lastwrite==0.3.0
+lastwrite --from-etl examples\sample_trace.csv --format json
+lastwrite report --from-etl examples\sample_trace.csv --output sample-report.html
 ```
 
-### Top Noisy Files
+### Live process snapshot (elevated PowerShell)
 ```powershell
-lastwrite --process chrome.exe --duration 5m --group file --top 10
+lastwrite --process notepad.exe --duration 30s
+```
+
+### Top noisy files
+```powershell
+lastwrite --process chrome.exe --duration 30s --group file --top 10
 ```
 
 ### Export HTML Evidence Package
